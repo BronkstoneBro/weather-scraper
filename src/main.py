@@ -7,7 +7,7 @@ import click
 
 from src.models.location import get_location, Location
 from src.models.exceptions import WeatherScraperException
-from src.scrapers.bs4.scraper import BBCWeatherScraper
+from src.scrapers.factory import create_scraper
 from src.storage.json_storage import JSONStorage
 from src.storage.csv_storage import CSVStorage
 from src.utils.logger import logger
@@ -16,22 +16,32 @@ from src.utils.config import settings
 
 async def scrape_weather(
     location: Location,
+    engine: str = "bs4",
     output_format: str = "json",
     output_file: Optional[str] = None,
     screenshot: bool = False,
 ) -> Path:
-    logger.info(f"Starting weather scrape for {location.name}")
+    logger.info(f"Starting weather scrape for {location.name} using {engine} engine")
 
-    async with BBCWeatherScraper() as scraper:
+    scraper = create_scraper(
+        engine=engine, storage_format=output_format, output_filename=output_file
+    )
+
+    async with scraper:
         weather_data = await scraper.scrape(location)
 
-        if screenshot and scraper._page:
+        if screenshot and engine == "bs4" and hasattr(scraper, "_page") and scraper._page:
             screenshot_path = (
                 settings.output_dir
                 / f"screenshot_{location.name.lower().replace(' ', '_')}.png"
             )
             await scraper.take_screenshot(str(screenshot_path))
             logger.info(f"Screenshot saved to: {screenshot_path}")
+
+    if engine == "scrapy":
+        logger.info(f"Data saved by Scrapy pipeline")
+        logger.info(f"Scraped {len(weather_data.hourly_forecast)} hourly forecasts")
+        return settings.output_dir / f"{output_file or 'weather'}.{output_format}"
 
     if output_format == "json":
         storage = JSONStorage()
@@ -55,12 +65,13 @@ LOCATIONS = "London, Manchester, Birmingham, Edinburgh, Glasgow, Cardiff, Liverp
 @click.option("-l", "--location", help="Location name (e.g., London, Manchester)")
 @click.option("--location-id", help="BBC Weather location ID")
 @click.option("--location-name", help="Display name (used with --location-id)")
+@click.option("-e", "--engine", default="bs4", type=click.Choice(["bs4", "scrapy"]), help="Scraper engine (default: bs4)")
 @click.option("-f", "--format", "output_format", default="json", type=click.Choice(["json", "csv"]), help="Output format")
 @click.option("-o", "--output", help="Custom output filename (without extension)")
-@click.option("-s", "--screenshot", is_flag=True, help="Save page screenshot")
+@click.option("-s", "--screenshot", is_flag=True, help="Save page screenshot (bs4 only)")
 @click.option("--log-level", default="INFO", type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"]), help="Logging level")
 @click.option("--headless/--no-headless", default=True, help="Run browser in headless mode")
-def main(location, location_id, location_name, output_format, output, screenshot, log_level, headless):
+def main(location, location_id, location_name, engine, output_format, output, screenshot, log_level, headless):
 
     settings.log_level = log_level
     settings.headless = headless
@@ -87,6 +98,7 @@ def main(location, location_id, location_name, output_format, output, screenshot
         output_path = asyncio.run(
             scrape_weather(
                 location=loc,
+                engine=engine,
                 output_format=output_format,
                 output_file=output,
                 screenshot=screenshot,
