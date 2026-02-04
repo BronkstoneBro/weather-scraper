@@ -2,7 +2,7 @@ import asyncio
 import time
 from pathlib import Path
 
-from src.models.location import get_location
+from src.constants.locations import get_location
 from src.scrapers.factory import create_scraper
 from src.utils.logger import logger
 

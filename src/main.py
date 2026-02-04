@@ -5,7 +5,8 @@ from typing import Optional
 
 import click
 
-from src.models.location import get_location, Location
+from src.models.location import Location
+from src.constants.locations import get_location
 from src.models.exceptions import WeatherScraperException
 from src.scrapers.factory import create_scraper
 from src.storage.json_storage import JSONStorage
